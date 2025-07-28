@@ -71,8 +71,8 @@
 
 1. **Clona el repositorio**
    ```powershell
-   git clone https://github.com/tu-usuario/phealth-companion.git
-   cd phealth-companion
+   git clone https://github.com/artmej/ai-personal-health-companion.git
+   cd ai-personal-health-companion
    ```
 
 2. **Ejecuta el script de despliegue**
@@ -276,8 +276,8 @@ Este proyecto está licenciado bajo la Licencia MIT - ve el archivo [LICENSE](LI
 
 ## 📞 Soporte
 
-- **Issues**: [GitHub Issues](https://github.com/tu-usuario/phealth-companion/issues)
-- **Documentación**: [Wiki del Proyecto](https://github.com/tu-usuario/phealth-companion/wiki)
+- **Issues**: [GitHub Issues](https://github.com/artmej/ai-personal-health-companion/issues)
+- **Documentación**: [Wiki del Proyecto](https://github.com/artmej/ai-personal-health-companion/wiki)
 - **Email**: soporte@phealth-companion.com
 
 ## 🙏 Agradecimientos
