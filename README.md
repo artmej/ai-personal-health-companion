@@ -31,7 +31,8 @@
 
 ### 🔒 Seguridad Empresarial
 - Azure Key Vault para gestión segura de secretos
-- Workload Identity para autenticación sin contraseñas
+- Microsoft Entra ID (Azure AD) para autenticación y autorización
+- Workload Identity para autenticación sin contraseñas entre servicios
 - Encriptación de datos en tránsito y reposo
 
 ## 🏗️ Arquitectura
@@ -89,6 +90,24 @@
    - Aplicación Web: `https://tu-app-web.azurecontainerapps.io`
    - API: `https://tu-api.azurecontainerapps.io`
 
+### Configuración de Microsoft Entra ID
+
+1. **Registra la aplicación en Azure AD**
+   ```powershell
+   # Crear registro de aplicación
+   az ad app create --display-name "AI Health Companion" --web-redirect-uris "https://tu-app-web.azurecontainerapps.io/.auth/login/aad/callback"
+   ```
+
+2. **Configura permisos de API**
+   - Microsoft Graph: `User.Read`, `User.ReadBasic.All`
+   - Azure AI Services: `Cognitive Services User`
+   - Azure Storage: `Storage Blob Data Contributor`
+
+3. **Habilita autenticación en Container Apps**
+   ```bash
+   az containerapp auth update --name "health-companion-web" --resource-group "rg-health-companion" --action Allow --identity-providers azureActiveDirectory
+   ```
+
 ### Despliegue Manual
 
 Si prefieres un control más granular:
@@ -138,7 +157,8 @@ azd deploy
 
 2. **Configura endpoints de API**
    - Health Analyst Agent: `https://tu-api.azurecontainerapps.io/api`
-   - Configura autenticación con Managed Identity
+   - Configura autenticación con Microsoft Entra ID
+   - Registra la aplicación en Azure AD para obtener permisos necesarios
 
 3. **Comandos de ejemplo**
    ```
@@ -173,7 +193,8 @@ Puedes modificar los workflows para:
 
 ### Características de Seguridad
 
-- **Managed Identity**: Autenticación sin contraseñas entre servicios
+- **Microsoft Entra ID**: Autenticación centralizada con Single Sign-On (SSO)
+- **Managed Identity**: Autenticación sin contraseñas entre servicios Azure
 - **Key Vault**: Gestión centralizada de secretos y claves
 - **RBAC**: Control de acceso basado en roles
 - **Encriptación**: Datos encriptados en tránsito y reposo
@@ -224,6 +245,8 @@ PHealthCompa/
    export COSMOS_DB_ENDPOINT="tu-cosmos-endpoint"
    export STORAGE_ACCOUNT_ENDPOINT="tu-storage-endpoint"
    export KEY_VAULT_URL="tu-keyvault-url"
+   export AZURE_CLIENT_ID="tu-app-registration-id"
+   export AZURE_TENANT_ID="tu-tenant-id"
    ```
 
 ### Personalización
