@@ -1,0 +1,220 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "cosmosdb_connection": {
+      "type": "string",
+      "metadata": {
+        "description": "Connection string for Cosmos DB"
+      }
+    },
+    "openai_endpoint": {
+      "type": "string",
+      "metadata": {
+        "description": "Azure OpenAI endpoint URL"
+      }
+    },
+    "notification_email": {
+      "type": "string",
+      "metadata": {
+        "description": "Email address for notifications"
+      }
+    }
+  },
+  "triggers": {
+    "when_new_food_image_uploaded": {
+      "type": "BlobTrigger",
+      "inputs": {
+        "path": "food-images/{name}",
+        "connection": "@parameters('storage_connection')"
+      },
+      "metadata": {
+        "description": "Triggered when a new food image is uploaded to blob storage"
+      }
+    }
+  },
+  "actions": {
+    "get_image_metadata": {
+      "type": "Compose",
+      "inputs": {
+        "blobName": "@{triggerBody()?['name']}",
+        "blobUri": "@{triggerBody()?['uri']}",
+        "userId": "@{split(triggerBody()?['name'], '/')[0]}",
+        "timestamp": "@{utcNow()}"
+      },
+      "runAfter": {}
+    },
+    "check_user_preferences": {
+      "type": "Http",
+      "inputs": {
+        "method": "GET",
+        "uri": "@{concat('https://your-api-endpoint.azurecontainerapps.io/api/user-preferences/', variables('userId'))}",
+        "headers": {
+          "Authorization": "Bearer @{variables('authToken')}"
+        }
+      },
+      "runAfter": {
+        "get_image_metadata": ["Succeeded"]
+      }
+    },
+    "analyze_food_image": {
+      "type": "Http",
+      "inputs": {
+        "method": "POST",
+        "uri": "https://your-api-endpoint.azurecontainerapps.io/api/analyze-food",
+        "headers": {
+          "Authorization": "Bearer @{variables('authToken')}",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "user_id": "@{outputs('get_image_metadata')['userId']}",
+          "image_url": "@{outputs('get_image_metadata')['blobUri']}",
+          "auto_process": true
+        }
+      },
+      "runAfter": {
+        "check_user_preferences": ["Succeeded"]
+      }
+    },
+    "check_analysis_results": {
+      "type": "Switch",
+      "expression": "@outputs('analyze_food_image')['body']['status']",
+      "cases": {
+        "success": {
+          "case": "completed",
+          "actions": {
+            "generate_insights": {
+              "type": "Http",
+              "inputs": {
+                "method": "POST",
+                "uri": "https://your-api-endpoint.azurecontainerapps.io/api/generate-insights",
+                "headers": {
+                  "Authorization": "Bearer @{variables('authToken')}",
+                  "Content-Type": "application/json"
+                },
+                "body": {
+                  "analysis_id": "@{outputs('analyze_food_image')['body']['analysis_id']}",
+                  "user_id": "@{outputs('get_image_metadata')['userId']}"
+                }
+              }
+            },
+            "check_health_alerts": {
+              "type": "If",
+              "expression": {
+                "and": [
+                  {
+                    "greater": [
+                      "@length(outputs('generate_insights')['body']['health_alerts'])",
+                      0
+                    ]
+                  }
+                ]
+              },
+              "actions": {
+                "send_health_alert_email": {
+                  "type": "SendEmail",
+                  "inputs": {
+                    "to": "@{body('check_user_preferences')['email']}",
+                    "subject": "Alerta de Salud - AI Health Companion",
+                    "body": {
+                      "html": "@{concat('<h2>Alerta de Salud Personalizada</h2><p>Hemos detectado algunos puntos importantes en tu análisis de alimentos:</p><ul>', join(outputs('generate_insights')['body']['health_alerts'], '</li><li>'), '</ul><p>Te recomendamos revisar estos puntos con tu médico si persisten.</p>')}"
+                    }
+                  }
+                },
+                "create_teams_notification": {
+                  "type": "Http",
+                  "inputs": {
+                    "method": "POST",
+                    "uri": "https://graph.microsoft.com/v1.0/teams/@{body('check_user_preferences')['teams_id']}/channels/@{body('check_user_preferences')['health_channel_id']}/messages",
+                    "headers": {
+                      "Authorization": "Bearer @{variables('graphToken')}",
+                      "Content-Type": "application/json"
+                    },
+                    "body": {
+                      "body": {
+                        "content": "🚨 **Alerta de Salud** 🚨\\n\\nSe han detectado puntos importantes en tu último análisis de alimentos. Revisa la app para más detalles."
+                      }
+                    }
+                  }
+                }
+              },
+              "runAfter": {
+                "generate_insights": ["Succeeded"]
+              }
+            },
+            "update_daily_summary": {
+              "type": "Http",
+              "inputs": {
+                "method": "PUT",
+                "uri": "https://your-api-endpoint.azurecontainerapps.io/api/daily-summary",
+                "headers": {
+                  "Authorization": "Bearer @{variables('authToken')}",
+                  "Content-Type": "application/json"
+                },
+                "body": {
+                  "user_id": "@{outputs('get_image_metadata')['userId']}",
+                  "date": "@{formatDateTime(utcNow(), 'yyyy-MM-dd')}",
+                  "food_analysis": "@{outputs('analyze_food_image')['body']}",
+                  "insights": "@{outputs('generate_insights')['body']}"
+                }
+              },
+              "runAfter": {
+                "check_health_alerts": ["Succeeded", "Skipped"]
+              }
+            }
+          }
+        },
+        "error": {
+          "case": "failed",
+          "actions": {
+            "log_error": {
+              "type": "Compose",
+              "inputs": {
+                "error": "@{outputs('analyze_food_image')['body']['error']}",
+                "timestamp": "@{utcNow()}",
+                "userId": "@{outputs('get_image_metadata')['userId']}",
+                "blobUri": "@{outputs('get_image_metadata')['blobUri']}"
+              }
+            },
+            "send_error_notification": {
+              "type": "SendEmail",
+              "inputs": {
+                "to": "@parameters('notification_email')",
+                "subject": "Error en Análisis de Alimentos - AI Health Companion",
+                "body": {
+                  "text": "Error procesando imagen de alimentos para usuario @{outputs('get_image_metadata')['userId']}: @{outputs('analyze_food_image')['body']['error']}"
+                }
+              }
+            }
+          }
+        }
+      },
+      "default": {
+        "actions": {
+          "wait_and_retry": {
+            "type": "Wait",
+            "inputs": {
+              "interval": {
+                "count": 30,
+                "unit": "Second"
+              }
+            }
+          }
+        }
+      },
+      "runAfter": {
+        "analyze_food_image": ["Succeeded", "Failed"]
+      }
+    }
+  },
+  "outputs": {
+    "analysis_result": {
+      "type": "object",
+      "value": "@outputs('analyze_food_image')['body']"
+    },
+    "processing_time": {
+      "type": "string",
+      "value": "@{formatDateTime(utcNow(), 'yyyy-MM-ddTHH:mm:ssZ')}"
+    }
+  }
+}

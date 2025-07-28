@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+name: phealth-companion
+metadata:
+  template: phealth-companion@0.0.1-beta
+
+# Infrastructure configuration
+infra:
+  provider: bicep
+  path: ./infra
+
+# Services configuration
+services:
+  api:
+    project: ./src/api
+    language: python
+    host: containerapp
+      
+  web:
+    project: ./src/web
+    language: python
+    host: containerapp
+
+  processor:
+    project: ./src/processor
+    language: python
+    host: containerapp
+
+# Hooks for deployment
+hooks:
+  predeploy:
+    shell: pwsh
+    run: |
+      echo "Preparing deployment..."
+      
+  postdeploy:
+    shell: pwsh
+    run: |
+      echo "Deployment completed successfully!"

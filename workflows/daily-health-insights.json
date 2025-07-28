@@ -1,0 +1,144 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "notification_email": {
+      "type": "String",
+      "metadata": {
+        "description": "Email address for daily health notifications"
+      }
+    },
+    "api_endpoint": {
+      "type": "String",
+      "metadata": {
+        "description": "API endpoint for health companion service"
+      }
+    }
+  },
+  "triggers": {
+    "daily_schedule": {
+      "type": "Recurrence",
+      "recurrence": {
+        "frequency": "Day",
+        "interval": 1,
+        "schedule": {
+          "hours": ["8"],
+          "minutes": [0]
+        },
+        "timeZone": "UTC"
+      }
+    }
+  },
+  "actions": {
+    "get_active_users": {
+      "type": "Http",
+      "inputs": {
+        "method": "GET",
+        "uri": "@{concat(parameters('api_endpoint'), '/api/active-users')}",
+        "headers": {
+          "Content-Type": "application/json"
+        }
+      },
+      "runAfter": {}
+    },
+    "for_each_user": {
+      "type": "Foreach",
+      "foreach": "@body('get_active_users')",
+      "actions": {
+        "get_user_health_summary": {
+          "type": "Http",
+          "inputs": {
+            "method": "GET",
+            "uri": "@{concat(parameters('api_endpoint'), '/api/user-health-summary/', items('for_each_user')['userId'])}",
+            "headers": {
+              "Content-Type": "application/json"
+            }
+          }
+        },
+        "generate_daily_insights": {
+          "type": "Http",
+          "inputs": {
+            "method": "POST",
+            "uri": "@{concat(parameters('api_endpoint'), '/api/generate-daily-insights')}",
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "user_id": "@{items('for_each_user')['userId']}",
+              "health_summary": "@{body('get_user_health_summary')}"
+            }
+          },
+          "runAfter": {
+            "get_user_health_summary": ["Succeeded"]
+          }
+        },
+        "check_if_send_notification": {
+          "type": "If",
+          "expression": {
+            "and": [
+              {
+                "equals": [
+                  "@body('generate_daily_insights')['send_notification']",
+                  true
+                ]
+              },
+              {
+                "not": {
+                  "equals": [
+                    "@items('for_each_user')['email']",
+                    ""
+                  ]
+                }
+              }
+            ]
+          },
+          "actions": {
+            "send_daily_health_email": {
+              "type": "Http",
+              "inputs": {
+                "method": "POST",
+                "uri": "https://graph.microsoft.com/v1.0/me/sendMail",
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": {
+                  "message": {
+                    "subject": "Tu Resumen Diario de Salud - AI Health Companion",
+                    "body": {
+                      "contentType": "HTML",
+                      "content": "@{body('generate_daily_insights')['email_content']}"
+                    },
+                    "toRecipients": [
+                      {
+                        "emailAddress": {
+                          "address": "@{items('for_each_user')['email']}"
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "runAfter": {
+            "generate_daily_insights": ["Succeeded"]
+          }
+        }
+      },
+      "runAfter": {
+        "get_active_users": ["Succeeded"]
+      }
+    },
+    "log_daily_summary": {
+      "type": "Compose",
+      "inputs": {
+        "total_users_processed": "@length(body('get_active_users'))",
+        "processing_date": "@formatDateTime(utcNow(), 'yyyy-MM-dd')",
+        "status": "completed"
+      },
+      "runAfter": {
+        "for_each_user": ["Succeeded", "Failed"]
+      }
+    }
+  }
+}
