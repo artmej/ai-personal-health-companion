@@ -29,34 +29,48 @@
 - Procesamiento en segundo plano para insights diarios
 - Pipelines de CI/CD con Azure DevOps
 
-### 🔒 Seguridad Empresarial
-- Azure Key Vault para gestión segura de secretos
-- Microsoft Entra ID (Azure AD) para autenticación y autorización
-- Workload Identity para autenticación sin contraseñas entre servicios
-- Encriptación de datos en tránsito y reposo
+### 🔒 Seguridad Empresarial (Red Privada)
+- **Managed Identity Exclusivo**: Autenticación sin claves API o secretos
+- **VNet Privada**: Comunicación interna únicamente, sin acceso a internet
+- **Private Endpoints**: Todos los servicios Azure accesibles solo desde la VNet
+- **Microsoft Entra ID**: Autenticación y autorización centralizada
+- **RBAC Granular**: Control de acceso basado en roles para cada recurso
+- **Encriptación**: Datos encriptados en tránsito y reposo
 
-## 🏗️ Arquitectura
+## 🏗️ Arquitectura (Red Privada)
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Web Frontend  │    │   API Backend   │    │   Processor     │
-│   (Streamlit)   │────│   (FastAPI)     │────│   (Background)  │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         └───────────────────────┼───────────────────────┘
-                                 │
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Azure AI      │    │   Cosmos DB     │    │   Blob Storage  │
-│   Services      │    │   (Database)    │    │   (Images)      │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         └───────────────────────┼───────────────────────┘
-                                 │
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Logic Apps    │    │   Key Vault     │    │   M365 Copilot  │
-│   (Workflows)   │    │   (Secrets)     │    │   (Agents)      │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
+                    ┌─────────────────────────────────────────┐
+                    │           VNet Privada (10.0.0.0/16)   │
+                    │                                         │
+    ┌─────────────────────────────────────────────────────────────┐
+    │                Container Apps Environment                    │
+    │   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
+    │   │ Web Frontend│  │ API Backend │  │ Processor   │        │
+    │   │ (Streamlit) │──│ (FastAPI)   │──│ (Background)│        │
+    │   └─────────────┘  └─────────────┘  └─────────────┘        │
+    │                     Internal Load Balancer                 │
+    └─────────────────────────────────────────────────────────────┘
+                                    │
+                    ┌─────────────────────────────────────────┐
+                    │        Private Endpoints Subnet        │
+    ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+    │   Azure AI      │ │   Cosmos DB     │ │   Blob Storage  │
+    │   Services      │ │   (Database)    │ │   (Images)      │
+    │  (Private EP)   │ │  (Private EP)   │ │  (Private EP)   │
+    └─────────────────┘ └─────────────────┘ └─────────────────┘
+    ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+    │   Key Vault     │ │ App Insights    │ │ Managed Identity│
+    │  (Private EP)   │ │   (Private)     │ │   (RBAC Only)   │
+    └─────────────────┘ └─────────────────┘ └─────────────────┘
+                    └─────────────────────────────────────────┘
 ```
+
+**🔐 Características de Seguridad:**
+- **Sin acceso a internet**: Todos los componentes funcionan en red privada
+- **Managed Identity**: Sin claves API, autenticación automática entre servicios
+- **Private Endpoints**: Servicios Azure accesibles solo desde la VNet
+- **Internal Load Balancer**: Balanceador interno sin exposición pública
 
 ## 🚀 Inicio Rápido
 
@@ -76,19 +90,25 @@
    cd ai-personal-health-companion
    ```
 
-2. **Ejecuta el script de despliegue**
+2. **Ejecuta el script de despliegue (Red Privada)**
    ```powershell
-   .\deploy.ps1 -EnvironmentName "mi-health-companion" -Location "eastus"
+   .\deploy.ps1 -EnvironmentName "mi-health-companion" -Location "eastus" -UsePrivateNetworking
    ```
-
-3. **Configura la clave de OpenAI**
+   O usa la infraestructura privada directamente:
    ```bash
-   az keyvault secret set --vault-name "tu-keyvault" --name "openai-api-key" --value "tu-clave-openai"
+   az deployment group create --resource-group "rg-health-companion" --template-file "infra/main-private.bicep"
    ```
 
-4. **Accede a la aplicación**
-   - Aplicación Web: `https://tu-app-web.azurecontainerapps.io`
-   - API: `https://tu-api.azurecontainerapps.io`
+3. **Los servicios se configuran automáticamente**
+   - Managed Identity se asigna automáticamente a todos los recursos
+   - Private Endpoints se crean para todos los servicios Azure
+   - RBAC se configura para acceso entre componentes
+   - No se requieren claves API o secretos
+
+4. **Accede a la aplicación (Red Interna)**
+   - Aplicación Web: Accesible desde VNet interna únicamente
+   - API: Comunicación interna entre Container Apps
+   - Monitoreo: Application Insights sin acceso público
 
 ### Configuración de Microsoft Entra ID
 
@@ -193,12 +213,13 @@ Puedes modificar los workflows para:
 
 ### Características de Seguridad
 
-- **Microsoft Entra ID**: Autenticación centralizada con Single Sign-On (SSO)
-- **Managed Identity**: Autenticación sin contraseñas entre servicios Azure
-- **Key Vault**: Gestión centralizada de secretos y claves
-- **RBAC**: Control de acceso basado en roles
+- **Managed Identity Exclusivo**: Sin claves API, autenticación automática entre servicios
+- **Red Privada Completa**: VNet aislada con subnets dedicadas para cada capa
+- **Private Endpoints**: Todos los servicios Azure accesibles solo desde la VNet
+- **Sin Acceso a Internet**: Comunicación 100% interna, cumple restricciones corporativas
+- **RBAC Granular**: Control de acceso específico para cada recurso
 - **Encriptación**: Datos encriptados en tránsito y reposo
-- **Auditoría**: Logging completo de todas las operaciones
+- **Auditoría Completa**: Logging interno sin exposición externa
 
 ### Cumplimiento
 
